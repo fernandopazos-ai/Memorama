@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memorama Pro FJ</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --bg: #f0f2f5; --text: #1a1a2e; --btn: #e94560; --btn-text: #fff; --border: #0f3460;
+        }
+        body.dark-mode {
+            --bg: #1a1a2e; --text: #ffffff; --btn: #e94560; --btn-text: #fff; --border: #4ecca3;
+        }
+        body {
+            font-family: system-ui, sans-serif; background-color: var(--bg); color: var(--text);
+            margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center;
+            transition: background 0.3s, color 0.3s;
+        }
+        h1 { margin: 5px 0; font-size: 24px; }
+        
+        button {
+            padding: 10px 15px; font-size: 14px; font-weight: bold; background: var(--btn); color: var(--btn-text);
+            border: none; border-radius: 8px; cursor: pointer; min-width: 44px; min-height: 44px;
+            transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.95); }
+        .header-btns, .mode-selector, .config-selector, .color-selector { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; justify-content: center; }
+        
+        .color-selector label {
+            font-size: 12px; font-weight: bold; display: flex; flex-direction: column; align-items: center;
+        }
+        .color-selector input[type="color"] {
+            width: 40px; height: 30px; cursor: pointer; border: none; border-radius: 5px; margin-top: 5px;
+        }
+        
+        .stats { font-size: 14px; margin-bottom: 10px; font-weight: bold; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;}
+        .player-turn { padding: 5px 8px; border-radius: 5px; background: #ddd; color: #000; font-size: 13px;}
+        .player-turn.active { background: var(--btn); color: white; box-shadow: 0 0 10px var(--btn); transform: scale(1.1);}
+        
+        .grid {
+            display: grid; gap: 8px; max-width: 450px; width: 100%; margin-bottom: 20px; perspective: 1000px;
+        }
+        .card {
+            aspect-ratio: 1; position: relative; cursor: pointer;
+            transform-style: preserve-3d; transition: transform 0.5s;
+        }
+        .card.flipped { transform: rotateY(180deg); }
+        .card.matched { transform: rotateY(180deg); opacity: 0.8; cursor: default; pointer-events: none; }
+        
+        .card-face {
+            position: absolute; width: 100%; height: 100%; backface-visibility: hidden;
+            border-radius: 10px; display: flex; justify-content: center; align-items: center;
+            font-size: 28px; font-weight: bold; border: 2px solid var(--border);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); background-size: cover; background-position: center;
+        }
+        
+        .card-back { 
+            background-color: #16213e;
+            background-image: url('https://i.ibb.co/6PZ8Z7B/logo-fj.png'); 
+        }
+        .card-front { 
+            transform: rotateY(180deg); 
+            flex-direction: column;
+            background-color: #ffffff; 
+        }
+        .card-number { font-size: 12px; position: absolute; top: 5px; left: 5px; opacity: 0.5; }
+        
+        .card.matched .card-front { border-color: #4ecca3; box-shadow: 0 0 15px #4ecca3; }
+
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal-content {
+            background-color: #ffffff; color: #1a1a2e; padding: 25px; border-radius: 12px;
+            max-width: 85%; text-align: center; border: 3px solid #e94560; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); 
+        }
+        body.dark-mode .modal-content {
+            background-color: #16213e; color: #ffffff; border-color: #4ecca3;
+        }
+        .modal-content button {
+            margin-top: 15px; margin: 15px 5px 0 5px;
+        }
+        .share-btn { background: #25D366; }
+    </style>
+</head>
+<body>
+
+    <div id="modal-instructions" class="modal" style="display: flex;">
+        <div class="modal-content">
+            <h2>¡Bienvenido al Memorama!</h2>
+            <p>Encuentra las parejas antes de que se acabe el tiempo.</p>
+            <p><strong>Dificultades:</strong><br>
+               Fácil: Sin límite de tiempo.<br>
+               Medio: Tienes 2 minutos.<br>
+               Difícil: Tienes 1 minuto.</p>
+            <p><strong>Multijugador:</strong> Puedes jugar de 1 a 4 personas. Si fallas, pasa el turno. Si aciertas, sigues.</p>
+            <button onclick="document.getElementById('modal-instructions').style.display='none'">¡A jugar!</button>
+        </div>
+    </div>
+
+    <div id="modal-win" class="modal">
+        <div class="modal-content">
+            <h2 id="win-title">¡Fin del juego!</h2>
+            <p id="win-text"></p>
+            <button onclick="startGame()">Jugar de nuevo</button>
+            <button class="share-btn" onclick="shareScore()">Compartir</button>
+        </div>
+    </div>
+
+    <h1>Memorama FJ</h1>
+    
+    <div class="config-selector">
+        <button onclick="setConfig(1)">Dinos</button>
+        <button onclick="setConfig(2)">Coches</button>
+        <button onclick="setConfig(3)">Animales</button>
+        <button onclick="setConfig(4)">Frutas</button>
+    </div>
+
+    <div class="mode-selector">
+        <button onclick="setDifficulty('easy')" style="background:#4ecca3;">Fácil</button>
+        <button onclick="setDifficulty('medium')" style="background:#f39c12;">Medio ⏱️2m</button>
+        <button onclick="setDifficulty('hard')" style="background:#e74c3c;">Difícil ⏱️1m</button>
+    </div>
+
+    <div class="header-btns">
+        <button onclick="toggleDarkMode()">🌓 Modo</button>
+        <button onclick="toggleSound()">🔊 Sonido</button>
+        <button id="btn-players" onclick="cyclePlayers()">👥 Jugadores (2)</button>
+        <button onclick="document.getElementById('modal-instructions').style.display='flex'">ℹ️ Ayuda</button>
+    </div>
+
+    <div class="color-selector">
+        <label>Fondo App: <input type="color" id="appBgColor" value="#f0f2f5"></label>
+        <label>Carta Frente: <input type="color" id="cardFrontColor" value="#ffffff"></label>
+    </div>
+
+    <div class="stats">
+        <div>Movs: <span id="moves">0</span></div>
+        <div id="timer-display" style="color:var(--btn);">Tiempo: <span id="timer">00:00</span></div>
+    </div>
+    
+    <!-- Marcador Dinámico para N jugadores -->
+    <div id="scoreboard" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:15px;"></div>
+
+    <div class="grid" id="grid" style="grid-template-columns: repeat(4, 1fr);"></div>
+    <button onclick="startGame()">Reiniciar</button>
+
+    <script>
+        const configs = {
+            1: ['🦖', '🦕', '🐢', '🐊', '🐍', '🐸', '🦎', '🦜', '🐉', '🦅', '🦉', '🐙'],
+            2: ['🚗', '🚕', '🚙', '🚌', '🏎️', '🚓', '🚑', '🚒', '🚜', '🏍️', '🚲', '🛵'],
+            3: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮'],
+            4: ['🍎', '🍌', '🍇', '🍓', '🍒', '🍑', '🥭', '🍍', '🍉', '🍊', '🍋', '🥝']
+        };
+        let currentEmojis = configs[1];
+        let currentDifficulty = 'easy';
+
+        let soundEnabled = true;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (!soundEnabled) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            if (type === 'flip') { osc.frequency.value = 400; gain.gain.value = 0.1; osc.start(); osc.stop(audioCtx.currentTime + 0.1); }
+            if (type === 'match') { osc.frequency.value = 800; gain.gain.value = 0.1; osc.start(); osc.stop(audioCtx.currentTime + 0.3); }
+            if (type === 'win') { osc.frequency.value = 600; gain.gain.value = 0.1; osc.start(); osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.5); osc.stop(audioCtx.currentTime + 0.5); }
+        }
+
+        // Variables de estado
+        let cards = [], flipped = [], matched = 0, moves = 0, lock = false;
+        let numPlayers = 2; 
+        let scores = [0, 0, 0, 0]; // Arreglo para guardar puntaje de hasta 4 jugadores
+        let currentPlayer = 0; // Índice del jugador actual (0 a 3)
+        
+        let timerInterval, timeLeft = 0, timeElapsed = 0;
+        let timerStarted = false; 
+        
+        const grid = document.getElementById('grid');
+        const movesEl = document.getElementById('moves');
+        const timerEl = document.getElementById('timer');
+
+        function setConfig(num) { currentEmojis = configs[num]; startGame(); }
+        
+        function setDifficulty(level) {
+            currentDifficulty = level;
+            if(level === 'easy') grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+            if(level === 'medium') grid.style.gridTemplateColumns = 'repeat(5, 1fr)';
+            if(level === 'hard') grid.style.gridTemplateColumns = 'repeat(6, 1fr)';
+            startGame();
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+        }
+        if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            document.querySelector('button[onclick="toggleSound()"]').innerText = soundEnabled ? '🔊 Sonido' : '🔇 Silencio';
+        }
+
+        // === SELECCIÓN DE JUGADORES ===
+        function cyclePlayers() {
+            numPlayers = numPlayers === 4 ? 1 : numPlayers + 1;
+            document.getElementById('btn-players').innerText = `👥 Jugadores (${numPlayers})`;
+            startGame();
+        }
+
+        // === COLORES ===
+        const appBgInput = document.getElementById('appBgColor');
+        const cardFrontInput = document.getElementById('cardFrontColor');
+
+        function applyCustomColors() {
+            document.body.style.setProperty('background-color', appBgInput.value, 'important');
+            document.querySelectorAll('.card-front').forEach(el => {
+                el.style.setProperty('background-color', cardFrontInput.value, 'important');
+            });
+            localStorage.setItem('memoramaColores', JSON.stringify({ bg: appBgInput.value, front: cardFrontInput.value }));
+        }
+
+        appBgInput.addEventListener('input', applyCustomColors);
+        cardFrontInput.addEventListener('input', applyCustomColors);
+
+        const savedColors = localStorage.getItem('memoramaColores');
+        if (savedColors) {
+            const c = JSON.parse(savedColors);
+            appBgInput.value = c.bg;
+            cardFrontInput.value = c.front;
+        }
+
+        // === RENDERIZAR MARCADOR ===
+        function renderScoreboard() {
+            const scoreboard = document.getElementById('scoreboard');
+            scoreboard.innerHTML = '';
+            
+            for (let i = 0; i < numPlayers; i++) {
+                const div = document.createElement('div');
+                div.className = `player-turn ${currentPlayer === i ? 'active' : ''}`;
+                div.innerHTML = `J${i + 1}: <span id="score-${i}">${scores[i]}</span>`;
+                scoreboard.appendChild(div);
+            }
+        }
+
+        function updateScoreDisplay() {
+            for (let i = 0; i < numPlayers; i++) {
+                const el = document.getElementById(`score-${i}`);
+                if(el) el.innerText = scores[i];
+            }
+            // Actualizar la clase activa
+            const playersDivs = document.querySelectorAll('.player-turn');
+            playersDivs.forEach((div, index) => {
+                div.classList.toggle('active', index === currentPlayer);
+            });
+        }
+
+        // === LÓGICA DEL JUEGO ===
+        function startGame() {
+            document.getElementById('modal-win').style.display = 'none';
+            clearInterval(timerInterval);
+            timerStarted = false; 
+            
+            let numPairs = 8;
+            timeLeft = 0; timeElapsed = 0; 
+
+            if (currentDifficulty === 'medium') { numPairs = 10; timeLeft = 120; }
+            if (currentDifficulty === 'hard') { numPairs = 12; timeLeft = 60; }
+
+            updateTimerDisplay();
+
+            let selectedEmojis = currentEmojis.slice(0, numPairs);
+            cards = [...selectedEmojis, ...selectedEmojis].sort(() => Math.random() - 0.5);
+            
+            flipped = []; matched = 0; moves = 0; lock = false;
+            
+            // Reiniciar puntajes y turno
+            scores = [0, 0, 0, 0]; 
+            currentPlayer = 0; 
+            
+            renderScoreboard(); // Dibuja los nombres de los jugadores
+            movesEl.innerText = moves;
+            grid.innerHTML = '';
+
+            cards.forEach((emoji, index) => {
+                const card = document.createElement('div');
+                card.classList.add('card');
+                card.dataset.emoji = emoji;
+                card.innerHTML = `
+                    <div class="card-face card-back"></div>
+                    <div class="card-face card-front">
+                        <span class="card-number">#${index + 1}</span>
+                        <span>${emoji}</span>
+                    </div>
+                `;
+                card.addEventListener('click', flipCard);
+                grid.appendChild(card);
+            });
+
+            applyCustomColors();
+        }
+
+        function startTimer() {
+            if (timerStarted) return;
+            timerStarted = true;
+            
+            timerInterval = setInterval(() => {
+                if (currentDifficulty === 'easy') {
+                    timeElapsed++; 
+                } else {
+                    timeLeft--; 
+                    if (timeLeft <= 0) {
+                        clearInterval(timerInterval);
+                        endGame("¡Tiempo agotado! ⏰");
+                    }
+                }
+                updateTimerDisplay();
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            let timeToShow = currentDifficulty === 'easy' ? timeElapsed : timeLeft;
+            let m = Math.floor(timeToShow / 60).toString().padStart(2, '0');
+            let s = (timeToShow % 60).toString().padStart(2, '0');
+            timerEl.innerText = `${m}:${s}`;
+        }
+
+        function flipCard(e) {
+            if (lock) return;
+            const card = e.currentTarget;
+            if (card.classList.contains('flipped') || card.classList.contains('matched')) return;
+
+            if (!timerStarted) { startTimer(); }
+
+            playSound('flip');
+            card.classList.add('flipped');
+            flipped.push(card);
+
+            if (flipped.length === 2) {
+                moves++;
+                movesEl.innerText = moves;
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            const [c1, c2] = flipped;
+            if (c1.dataset.emoji === c2.dataset.emoji) {
+                playSound('match');
+                c1.classList.add('matched'); c2.classList.add('matched');
+                matched++; flipped = [];
+                
+                // Sumar punto al jugador actual
+                scores[currentPlayer]++;
+                updateScoreDisplay();
+
+                let totalPairs = cards.length / 2;
+                if (matched === totalPairs) {
+                    clearInterval(timerInterval);
+                    let timeFinal = currentDifficulty === 'easy' ? timeElapsed : (currentDifficulty === 'medium' ? 120 - timeLeft : 60 - timeLeft);
+                    endGame("¡Ganaste! 🎉", timeFinal);
+                }
+            } else {
+                lock = true;
+                setTimeout(() => {
+                    c1.classList.remove('flipped'); c2.classList.remove('flipped');
+                    flipped = []; lock = false;
+                    
+                    // Cambiar al siguiente jugador de forma circular (0, 1, 2, 3, 0...)
+                    currentPlayer = (currentPlayer + 1) % numPlayers;
+                    updateScoreDisplay();
+                    
+                }, 800);
+            }
+        }
+
+        function endGame(reason, timeTaken = null) {
+            playSound('win');
+            const modal = document.getElementById('modal-win');
+            const title = document.getElementById('win-title');
+            const text = document.getElementById('win-text');
+
+            if (timeTaken === null) {
+                timeTaken = currentDifficulty === 'easy' ? timeElapsed : (currentDifficulty === 'medium' ? 120 - timeLeft : 60 - timeLeft);
+            }
+
+            title.innerText = reason;
+
+            // Calcular ganador o empate
+            let maxScore = Math.max(...scores.slice(0, numPlayers));
+            let winners = [];
+            for(let i=0; i<numPlayers; i++) {
+                if(scores[i] === maxScore) winners.push(`J${i+1}`);
+            }
+
+            let resultText = "";
+            if (winners.length === numPlayers) {
+                resultText = "¡Empate general! 🤝";
+            } else if (winners.length === 1) {
+                resultText = `¡Ganó el Jugador ${winners[0]}! 🏆`;
+            } else {
+                resultText = `¡Empate entre ${winners.join(' y ')}! 🤝`;
+            }
+
+            // Armar el texto de los puntajes
+            let scoreText = "";
+            for(let i=0; i<numPlayers; i++) {
+                scoreText += `J${i+1}: ${scores[i]} parejas | `;
+            }
+
+            text.innerHTML = `<strong>${resultText}</strong><br><br>
+                              ${scoreText.slice(0, -3)}<br>
+                              Movimientos: ${moves}<br>
+                              Tiempo total: ${timeTaken} segs.`;
+            modal.style.display = 'flex';
+        }
+
+        function shareScore() {
+            let scoreText = "";
+            for(let i=0; i<numPlayers; i++) {
+                scoreText += `J${i+1}: ${scores[i]} | `;
+            }
+            const text = `¡Jugué al Memorama FJ! 🎮\nTerminé en ${moves} movimientos. 🏆\n${scoreText}`;
+            if (navigator.share) {
+                navigator.share({ title: 'Mi resultado', text: text });
+            } else {
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+            }
+        }
+
+        // Iniciar todo
+        applyCustomColors();
+        startGame();
+    </script>
+</body>
+</html>
